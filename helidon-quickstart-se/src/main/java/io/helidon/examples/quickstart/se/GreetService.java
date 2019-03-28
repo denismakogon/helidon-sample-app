@@ -39,20 +39,6 @@ import io.helidon.webserver.ServerRequest;
 import io.helidon.webserver.ServerResponse;
 import io.helidon.webserver.Service;
 
-/**
- * A simple service to greet you. Examples:
- *
- * Get default greeting message:
- * curl -X GET http://localhost:8080/greet
- *
- * Get greeting message for Joe:
- * curl -X GET http://localhost:8080/greet/Joe
- *
- * Change greeting
- * curl -X PUT -H "Content-Type: application/json" -d '{"greeting" : "Howdy"}' http://localhost:8080/greet/greeting
- *
- * The message is returned as a JSON object
- */
 
 public class GreetService implements Service {
 
@@ -74,7 +60,16 @@ public class GreetService implements Service {
     @Override
     public void update(Routing.Rules rules) {
         rules
-            .post("/fn/{name}", this::postCallFn);
+            .post("/fn/{name}", this::postCallFn)
+            .post("/fn", this::postCallFn);
+    }
+
+    private void returnExceptionAsResponse(Exception e, ServerResponse response) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        e.printStackTrace(pw);
+        String sStackTrace = sw.toString();
+        response.send(sw.toString());
     }
 
     private void postCallFn(ServerRequest request,
@@ -91,11 +86,7 @@ public class GreetService implements Service {
             response.send(res);
         }
         catch (Exception e) {
-            StringWriter sw = new StringWriter();
-            PrintWriter pw = new PrintWriter(sw);
-            e.printStackTrace(pw);
-            String sStackTrace = sw.toString();
-            response.send(sw.toString());
+            this.returnExceptionAsResponse(e, response);
         }
     }
 
@@ -119,14 +110,21 @@ public class GreetService implements Service {
         response.send(returnObject);
     }
 
-    /**
-     * Set the greeting to use in future messages.
-     * @param request the server request
-     * @param response the server response
-     */
-//    private void updateGreetingHandler(ServerRequest request,
-//                                       ServerResponse response) {
-//        request.content().as(JsonObject.class).thenAccept(jo -> updateGreetingFromJson(jo, response));
-//    }
+    private void bypassToFn(JsonObject payload, ServerResponse response) {
+        try {
+            String url = new String(System.getenv("FN_INVOKE_URL"));
+            HttpClient hs = new HttpClient();
+            String res = hs.post(url, payload.toString());
+            response.send(res);
+        }
+        catch (Exception e) {
+            this.returnExceptionAsResponse(e, response);
+        }
+    }
+
+    private void postBypassFn(ServerRequest request,
+                                   ServerResponse response) {
+        request.content().as(JsonObject.class).thenAccept(payload -> this.bypassToFn(payload, response));
+    }
 
 }
